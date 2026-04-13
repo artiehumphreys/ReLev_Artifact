@@ -16,6 +16,6 @@ open_solution -reset solution1
 set_part {xcu280-fsvh2892-2L-e}
 create_clock -period 1.25
 
-# Run C-simulation
-csim_design -clean
+# Run C-simulation (pass keys file as argument)
+csim_design -clean -argv {keys.txt}
 exit

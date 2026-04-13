@@ -1,126 +1,127 @@
-#include <iostream>
-#include <cstring>
 #include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <vector>
 #include "krnl_bloom.hpp"
 
-int main()
-{
-    const int NUM_TEST_KEYS = 32;
-    const int NUM_INPUT_BURSTS = (NUM_TEST_KEYS + KEYS_PER_BURST - 1) / KEYS_PER_BURST;
-    const int NUM_OUTPUT_PACKS = (NUM_TEST_KEYS + IO_WRITE_BURST - 1) / IO_WRITE_BURST;
+static std::vector<uint32_t> read_keys(const std::string &filename) {
+  std::vector<uint32_t> keys;
+  std::ifstream infile(filename);
+  if (!infile.is_open()) {
+    std::cerr << "Failed to open key file: " << filename << std::endl;
+    std::exit(EXIT_FAILURE);
+  }
 
-    KeyPack input[NUM_INPUT_BURSTS];
-    ResultPack output[NUM_OUTPUT_PACKS];
+  uint32_t key;
+  while (infile >> key) {
+    keys.push_back(key);
+  }
 
-    memset(input, 0, sizeof(input));
-    memset(output, 0, sizeof(output));
+  return keys;
+}
 
-    // Fill with test keys: 100, 200, 300, ..., 3200
-    for (int i = 0; i < NUM_TEST_KEYS; i++)
-    {
-        input[i / KEYS_PER_BURST].keys[i % KEYS_PER_BURST] = (i + 1) * 100;
-    }
+static void pack_keys(const std::vector<uint32_t> &keys, KeyPack *input) {
+  for (size_t i = 0; i < keys.size(); i++) {
+    input[i / KEYS_PER_BURST].keys[i % KEYS_PER_BURST] = keys[i];
+  }
+}
 
-    // --- Test Standard Bloom Filter ---
-    std::cout << "=== Standard Bloom Filter Test ===" << std::endl;
+int main(int argc, char **argv) {
+  if (argc < 2) {
+    std::cout << "Usage: " << argv[0] << " <keys_file>" << std::endl;
+    return EXIT_FAILURE;
+  }
 
-    // Clear
-    krnl_bloom(input, output, NUM_TEST_KEYS, MODE_BF_CLEAR);
-    std::cout << "BF Clear: OK" << std::endl;
+  auto keys = read_keys(argv[1]);
+  int num_keys = keys.size();
+  std::cout << "Read " << num_keys << " keys from " << argv[1] << std::endl;
 
-    // Insert
-    krnl_bloom(input, output, NUM_TEST_KEYS, MODE_BF_INSERT);
-    std::cout << "BF Insert: OK" << std::endl;
+  int num_input_bursts = (num_keys + KEYS_PER_BURST - 1) / KEYS_PER_BURST;
+  int num_output_packs = (num_keys + IO_WRITE_BURST - 1) / IO_WRITE_BURST;
 
-    // Query inserted keys (should all be FOUND)
-    memset(output, 0, sizeof(output));
-    krnl_bloom(input, output, NUM_TEST_KEYS, MODE_BF_QUERY);
+  KeyPack *input = new KeyPack[num_input_bursts]();
+  ResultPack *output = new ResultPack[num_output_packs]();
 
-    int bf_hits = 0;
-    for (int i = 0; i < NUM_TEST_KEYS; i++)
-    {
-        uint8_t result = output[i / IO_WRITE_BURST].results[i % IO_WRITE_BURST];
-        if (result)
-            bf_hits++;
-    }
-    std::cout << "BF Query (inserted): " << bf_hits << "/" << NUM_TEST_KEYS << " found" << std::endl;
-    if (bf_hits != NUM_TEST_KEYS)
-    {
-        std::cerr << "FAIL: Expected all inserted keys to be found!" << std::endl;
-        return EXIT_FAILURE;
-    }
+  pack_keys(keys, input);
 
-    // Query keys NOT inserted (should mostly be NOT FOUND)
-    KeyPack input_miss[NUM_INPUT_BURSTS];
-    memset(input_miss, 0, sizeof(input_miss));
-    for (int i = 0; i < NUM_TEST_KEYS; i++)
-    {
-        input_miss[i / KEYS_PER_BURST].keys[i % KEYS_PER_BURST] = (i + 1) * 100 + 7;
-    }
+  // --- Standard Bloom Filter ---
+  std::cout << "=== Standard Bloom Filter Test ===" << std::endl;
 
-    memset(output, 0, sizeof(output));
-    krnl_bloom(input_miss, output, NUM_TEST_KEYS, MODE_BF_QUERY);
+  krnl_bloom(input, output, num_keys, MODE_BF_CLEAR);
+  std::cout << "BF Clear: OK" << std::endl;
 
-    int bf_false_pos = 0;
-    for (int i = 0; i < NUM_TEST_KEYS; i++)
-    {
-        uint8_t result = output[i / IO_WRITE_BURST].results[i % IO_WRITE_BURST];
-        if (result)
-            bf_false_pos++;
-    }
-    std::cout << "BF Query (not inserted): " << bf_false_pos << "/" << NUM_TEST_KEYS << " false positives" << std::endl;
+  krnl_bloom(input, output, num_keys, MODE_BF_INSERT);
+  std::cout << "BF Insert: OK" << std::endl;
 
-    // --- Test Counting Bloom Filter ---
-    std::cout << "\n=== Counting Bloom Filter Test ===" << std::endl;
+  memset(output, 0, num_output_packs * sizeof(ResultPack));
+  krnl_bloom(input, output, num_keys, MODE_BF_QUERY);
 
-    // Clear
-    krnl_bloom(input, output, NUM_TEST_KEYS, MODE_CBF_CLEAR);
-    std::cout << "CBF Clear: OK" << std::endl;
+  int bf_hits = 0;
+  for (int i = 0; i < num_keys; i++) {
+    uint8_t result = output[i / IO_WRITE_BURST].results[i % IO_WRITE_BURST];
+    if (result)
+      bf_hits++;
+  }
+  std::cout << "BF Query (inserted): " << bf_hits << "/" << num_keys
+            << " found" << std::endl;
+  if (bf_hits != num_keys) {
+    std::cerr << "FAIL: Expected all inserted keys to be found!" << std::endl;
+    delete[] input;
+    delete[] output;
+    return EXIT_FAILURE;
+  }
 
-    // Insert
-    krnl_bloom(input, output, NUM_TEST_KEYS, MODE_CBF_INSERT);
-    std::cout << "CBF Insert: OK" << std::endl;
+  // --- Counting Bloom Filter ---
+  std::cout << "\n=== Counting Bloom Filter Test ===" << std::endl;
 
-    // Query inserted keys
-    memset(output, 0, sizeof(output));
-    krnl_bloom(input, output, NUM_TEST_KEYS, MODE_CBF_QUERY);
+  krnl_bloom(input, output, num_keys, MODE_CBF_CLEAR);
+  std::cout << "CBF Clear: OK" << std::endl;
 
-    int cbf_hits = 0;
-    for (int i = 0; i < NUM_TEST_KEYS; i++)
-    {
-        uint8_t result = output[i / IO_WRITE_BURST].results[i % IO_WRITE_BURST];
-        if (result)
-            cbf_hits++;
-    }
-    std::cout << "CBF Query (inserted): " << cbf_hits << "/" << NUM_TEST_KEYS << " found" << std::endl;
-    if (cbf_hits != NUM_TEST_KEYS)
-    {
-        std::cerr << "FAIL: Expected all inserted keys to be found!" << std::endl;
-        return EXIT_FAILURE;
-    }
+  krnl_bloom(input, output, num_keys, MODE_CBF_INSERT);
+  std::cout << "CBF Insert: OK" << std::endl;
 
-    // Remove keys
-    krnl_bloom(input, output, NUM_TEST_KEYS, MODE_CBF_REMOVE);
-    std::cout << "CBF Remove: OK" << std::endl;
+  memset(output, 0, num_output_packs * sizeof(ResultPack));
+  krnl_bloom(input, output, num_keys, MODE_CBF_QUERY);
 
-    // Query after removal (should be NOT FOUND)
-    memset(output, 0, sizeof(output));
-    krnl_bloom(input, output, NUM_TEST_KEYS, MODE_CBF_QUERY);
+  int cbf_hits = 0;
+  for (int i = 0; i < num_keys; i++) {
+    uint8_t result = output[i / IO_WRITE_BURST].results[i % IO_WRITE_BURST];
+    if (result)
+      cbf_hits++;
+  }
+  std::cout << "CBF Query (inserted): " << cbf_hits << "/" << num_keys
+            << " found" << std::endl;
+  if (cbf_hits != num_keys) {
+    std::cerr << "FAIL: Expected all inserted keys to be found!" << std::endl;
+    delete[] input;
+    delete[] output;
+    return EXIT_FAILURE;
+  }
 
-    int cbf_after_remove = 0;
-    for (int i = 0; i < NUM_TEST_KEYS; i++)
-    {
-        uint8_t result = output[i / IO_WRITE_BURST].results[i % IO_WRITE_BURST];
-        if (result)
-            cbf_after_remove++;
-    }
-    std::cout << "CBF Query (after remove): " << cbf_after_remove << "/" << NUM_TEST_KEYS << " found" << std::endl;
-    if (cbf_after_remove != 0)
-    {
-        std::cerr << "FAIL: Expected no keys after removal!" << std::endl;
-        return EXIT_FAILURE;
-    }
+  krnl_bloom(input, output, num_keys, MODE_CBF_REMOVE);
+  std::cout << "CBF Remove: OK" << std::endl;
 
-    std::cout << "\n=== All tests passed ===" << std::endl;
-    return EXIT_SUCCESS;
+  memset(output, 0, num_output_packs * sizeof(ResultPack));
+  krnl_bloom(input, output, num_keys, MODE_CBF_QUERY);
+
+  int cbf_after_remove = 0;
+  for (int i = 0; i < num_keys; i++) {
+    uint8_t result = output[i / IO_WRITE_BURST].results[i % IO_WRITE_BURST];
+    if (result)
+      cbf_after_remove++;
+  }
+  std::cout << "CBF Query (after remove): " << cbf_after_remove << "/"
+            << num_keys << " found" << std::endl;
+  if (cbf_after_remove != 0) {
+    std::cerr << "FAIL: Expected no keys after removal!" << std::endl;
+    delete[] input;
+    delete[] output;
+    return EXIT_FAILURE;
+  }
+
+  std::cout << "\n=== All tests passed ===" << std::endl;
+  delete[] input;
+  delete[] output;
+  return EXIT_SUCCESS;
 }
