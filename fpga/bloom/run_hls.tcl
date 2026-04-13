@@ -17,5 +17,5 @@ set_part {xcu280-fsvh2892-2L-e}
 create_clock -period 1.25
 
 # Run C-simulation (pass keys file as argument)
-csim_design -clean -argv {keys.txt}
-exit
+set curr_dir [pwd]
+csim_design -clean -argv "$curr_dir/keys.txt"

@@ -1,0 +1,8 @@
+Input file size: 250000
+Read 128 patterns.
+Using 128 patterns.
+Padded file size: 254144
+Filling in buffer with 0s
+Finished reading file into buffer
+Finished allocating bo_in
+Running Kernel

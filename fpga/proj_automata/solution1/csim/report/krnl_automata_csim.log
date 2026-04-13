@@ -1,0 +1,7 @@
+INFO: [SIM 2] *************** CSIM start ***************
+INFO: [SIM 4] CSIM will launch GCC as the compiler.
+   Compiling ../../../../krnl_automata_test.cpp in debug mode
+   Compiling ../../../../host/util.cpp in debug mode
+   Compiling ../../../../automata_single_file.cpp in debug mode
+   Compiling ../../../../krnl_automata.cpp in debug mode
+   Generating csim.exe

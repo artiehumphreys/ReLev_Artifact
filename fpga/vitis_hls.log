@@ -1,0 +1,52 @@
+
+****** Vitis HLS - High-Level Synthesis from C, C++ and OpenCL v2023.2 (64-bit)
+  **** SW Build 4023990 on Oct 11 2023
+  **** IP Build 4028589 on Sat Oct 14 00:45:43 MDT 2023
+  **** SharedData Build 4025554 on Tue Oct 10 17:18:54 MDT 2023
+    ** Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+    ** Copyright 2022-2023 Advanced Micro Devices, Inc. All Rights Reserved.
+
+source /tools/Xilinx/Vitis_HLS/2023.2/scripts/vitis_hls/hls.tcl -notrace
+INFO: [HLS 200-10] Running '/tools/Xilinx/Vitis_HLS/2023.2/bin/unwrapped/lnx64.o/vitis_hls'
+INFO: [HLS 200-10] For user 'bgc9yp' on host 'panther' (Linux_x86_64 version 5.15.0-173-generic) on Mon Apr 13 17:29:32 EDT 2026
+INFO: [HLS 200-10] On os Ubuntu 22.04.5 LTS
+INFO: [HLS 200-10] In directory '/home/bgc9yp/ReLev_Artifact/fpga'
+INFO: [HLS 200-2053] The vitis_hls executable is being deprecated. Consider using vitis-run --mode hls --tcl
+Sourcing Tcl script 'run_hls.tcl'
+INFO: [HLS 200-1510] Running: open_project -reset proj_automata 
+INFO: [HLS 200-10] Opening and resetting project '/home/bgc9yp/ReLev_Artifact/fpga/proj_automata'.
+INFO: [HLS 200-1510] Running: add_files krnl_automata.cpp 
+INFO: [HLS 200-10] Adding design file 'krnl_automata.cpp' to the project
+INFO: [HLS 200-1510] Running: add_files automata_single_file.cpp 
+INFO: [HLS 200-10] Adding design file 'automata_single_file.cpp' to the project
+INFO: [HLS 200-1510] Running: add_files host/util.cpp 
+INFO: [HLS 200-10] Adding design file 'host/util.cpp' to the project
+INFO: [HLS 200-1510] Running: add_files -tb krnl_automata_test.cpp 
+INFO: [HLS 200-10] Adding test bench file 'krnl_automata_test.cpp' to the project
+INFO: [HLS 200-1510] Running: set_top krnl_automata 
+INFO: [HLS 200-1510] Running: open_solution -reset solution1 
+INFO: [HLS 200-10] Creating and opening solution '/home/bgc9yp/ReLev_Artifact/fpga/proj_automata/solution1'.
+INFO: [HLS 200-10] Cleaning up the solution database.
+INFO: [HLS 200-1505] Using default flow_target 'vivado'
+Resolution: For help on HLS 200-1505 see docs.xilinx.com/access/sources/dita/topic?Doc_Version=2023.2%20English&url=ug1448-hls-guidance&resourceid=200-1505.html
+INFO: [HLS 200-1510] Running: set_part xcu280-fsvh2892-2L-e 
+INFO: [HLS 200-1611] Setting target device to 'xcu280-fsvh2892-2L-e'
+INFO: [HLS 200-1510] Running: create_clock -period 1.25 
+INFO: [SYN 201-201] Setting up clock 'default' with a period of 1.25ns.
+INFO: [HLS 200-1510] Running: csim_design -clean 
+INFO: [SIM 211-2] *************** CSIM start ***************
+INFO: [SIM 211-4] CSIM will launch GCC as the compiler.
+INFO: [HLS 200-2036] Building debug C Simulation binaries
+   Compiling ../../../../krnl_automata_test.cpp in debug mode
+   Compiling ../../../../host/util.cpp in debug mode
+   Compiling ../../../../automata_single_file.cpp in debug mode
+   Compiling ../../../../krnl_automata.cpp in debug mode
+   Generating csim.exe
+Input file size: 250000
+Read 128 patterns.
+Using 128 patterns.
+Padded file size: 254144
+Filling in buffer with 0s
+Finished reading file into buffer
+Finished allocating bo_in
+Running Kernel
