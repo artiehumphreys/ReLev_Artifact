@@ -10,12 +10,14 @@
 
 #if KEY_BITS == 16
 typedef uint16_t key_t;
-#define KEYS_PER_BURST 32  // 64 / 2
-#define TUPLES_PER_BURST 10 // 64 / (3*2)
+#define KEYS_PER_BURST 32    // 64 / 2
+#define TUPLES_PER_BURST 10  // 64 / (3*2)
+#define RESULTS_PER_BURST 32 // 64 / 2
 #elif KEY_BITS == 32
 typedef uint32_t key_t;
-#define KEYS_PER_BURST 16  // 64 / 4
-#define TUPLES_PER_BURST 5 // 64 / (3*4)
+#define KEYS_PER_BURST 16    // 64 / 4
+#define TUPLES_PER_BURST 5   // 64 / (3*4)
+#define RESULTS_PER_BURST 16 // 64 / 4
 #else
 #error "KEY_BITS must be 16 or 32"
 #endif
@@ -43,14 +45,14 @@ typedef uint32_t key_t;
 #define MODE_CBF_INSERT 4
 #define MODE_CBF_REMOVE 5
 #define MODE_CBF_QUERY 6
-#define MODE_BF_SUBTREE 7
+#define MODE_BF_SUBTREE 7 // stream mode
 
 struct KeyPack {
   key_t keys[KEYS_PER_BURST];
 };
 
 struct ResultPack {
-  uint8_t results[IO_WRITE_BURST];
+  key_t results[RESULTS_PER_BURST];
 };
 
 struct KeyItem {
@@ -59,7 +61,7 @@ struct KeyItem {
 };
 
 struct ResultItem {
-  uint8_t result;
+  key_t result; // 0 = no match; for subtree mode, matched pid
   uint8_t done;
 };
 

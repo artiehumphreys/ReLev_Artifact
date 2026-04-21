@@ -49,7 +49,7 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
       bf_bits[i] = 0;
     }
 
-    // Drain the key stream (read until done sentinel)
+    // read until done sentinel
     while (1) {
       KeyItem item;
       keyStream >> item;
@@ -82,6 +82,44 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
     done_item.result = 0;
     done_item.done = 1;
     resultStream << done_item;
+    return;
+  }
+
+  // Subtree mode: stream (pid, ppid, is_target) tuples.
+  // Query ppid in BF; if found AND is_target, insert pid and emit alert.
+  if (mode == MODE_BF_SUBTREE) {
+    while (1) {
+      KeyItem pid_item;
+      keyStream >> pid_item;
+      if (pid_item.done) {
+        ResultItem done_item;
+        done_item.result = 0;
+        done_item.done = 1;
+        resultStream << done_item;
+        break;
+      }
+
+      KeyItem ppid_item;
+      keyStream >> ppid_item;
+
+      KeyItem target_item;
+      keyStream >> target_item;
+
+      bool ppid_found =
+          hls_bloom_query<BF_SIZE, BF_NUM_HASHES>(bf_bits, ppid_item.key);
+
+      ResultItem res;
+      res.done = 0;
+
+      if (ppid_found && (target_item.key != 0)) {
+        hls_bloom_insert<BF_SIZE, BF_NUM_HASHES>(bf_bits, pid_item.key);
+        res.result = pid_item.key; // alert: emit matched pid
+      } else {
+        res.result = 0;
+      }
+
+      resultStream << res;
+    }
     return;
   }
 
@@ -157,7 +195,7 @@ static void write_result(ResultPack *out,
 
     pack.results[result_i++] = item.result;
 
-    if (result_i == IO_WRITE_BURST) {
+    if (result_i == RESULTS_PER_BURST) {
       out[next_index++] = pack;
       pack = {};
       result_i = 0;
