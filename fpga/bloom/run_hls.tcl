@@ -1,11 +1,19 @@
+# Key width: override with -tclargs <bits>
+#   vitis_hls -f run_hls.tcl -tclargs 16
+if {$argc > 0} {
+    set KEY_BITS [lindex $argv 0]
+} else {
+    set KEY_BITS 32
+}
+
 # Create a project
 open_project -reset proj_bloom
 
 # Add design files
-add_files krnl_bloom.cpp
+add_files krnl_bloom.cpp -cflags "-DKEY_BITS=${KEY_BITS}"
 
 # Add test bench
-add_files -tb krnl_bloom_test.cpp
+add_files -tb krnl_bloom_test.cpp -cflags "-DKEY_BITS=${KEY_BITS}"
 
 # Set the top-level function
 set_top krnl_bloom
