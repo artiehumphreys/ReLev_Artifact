@@ -1,0 +1,34 @@
+# --- Vitis HLS / Vivado build artifacts ---
+proj_bloom/
+*.log
+*.jou
+*.pb
+*.str
+.Xil/
+vitis_hls.log
+
+# --- v++ Linker & Hardware Emulation ---
+all_builds/
+all_logs/
+*.xo
+*.xclbin
+*.xclbin.info
+*.xclbin.link_summary
+*.compile_summary
+*.link_summary
+emconfig.json
+_x/
+.ipcache/
+
+# --- Host Executables & Compiled binaries ---
+host.exe
+*.o
+*.obj
+*.exe
+
+# --- Simulation artifacts ---
+*.wdb
+*.wcfg
+xsim.dir/
+.run/
+
