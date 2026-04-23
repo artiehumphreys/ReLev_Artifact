@@ -5,15 +5,15 @@
 #include <vector>
 #include "krnl_bloom.hpp"
 
-static std::vector<key_t> read_keys(const std::string &filename) {
-  std::vector<key_t> keys;
+static std::vector<bloom_key_t> read_keys(const std::string &filename) {
+  std::vector<bloom_key_t> keys;
   std::ifstream infile(filename);
   if (!infile.is_open()) {
     std::cerr << "Failed to open key file: " << filename << std::endl;
     std::exit(EXIT_FAILURE);
   }
 
-  key_t key;
+  bloom_key_t key;
   while (infile >> key) {
     keys.push_back(key);
   }
@@ -21,7 +21,7 @@ static std::vector<key_t> read_keys(const std::string &filename) {
   return keys;
 }
 
-static void pack_keys(const std::vector<key_t> &keys, KeyPack *input) {
+static void pack_keys(const std::vector<bloom_key_t> &keys, KeyPack *input) {
   for (size_t i = 0; i < keys.size(); i++) {
     input[i / KEYS_PER_BURST].keys[i % KEYS_PER_BURST] = keys[i];
   }
@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
 
   int bf_hits = 0;
   for (int i = 0; i < num_keys; i++) {
-    key_t result = output[i / RESULTS_PER_BURST].results[i % RESULTS_PER_BURST];
+    bloom_key_t result = output[i / RESULTS_PER_BURST].results[i % RESULTS_PER_BURST];
     if (result)
       bf_hits++;
   }
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
 
   int cbf_hits = 0;
   for (int i = 0; i < num_keys; i++) {
-    key_t result = output[i / RESULTS_PER_BURST].results[i % RESULTS_PER_BURST];
+    bloom_key_t result = output[i / RESULTS_PER_BURST].results[i % RESULTS_PER_BURST];
     if (result)
       cbf_hits++;
   }
@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
 
   int cbf_after_remove = 0;
   for (int i = 0; i < num_keys; i++) {
-    key_t result = output[i / RESULTS_PER_BURST].results[i % RESULTS_PER_BURST];
+    bloom_key_t result = output[i / RESULTS_PER_BURST].results[i % RESULTS_PER_BURST];
     if (result)
       cbf_after_remove++;
   }
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
 
   // Clear BF, then seed PID 100 as known-bad root
   {
-    std::vector<key_t> seed = {100};
+    std::vector<bloom_key_t> seed = {100};
     int seed_n = seed.size();
     int seed_bursts = (seed_n + KEYS_PER_BURST - 1) / KEYS_PER_BURST;
     KeyPack *seed_in = new KeyPack[seed_bursts]();
@@ -137,8 +137,8 @@ int main(int argc, char **argv) {
     std::cout << "Seeded PID 100 into BF" << std::endl;
 
     // Edge tuples: (pid, ppid, is_target)
-    // Flattened into key_t stream — 3 values per tuple
-    std::vector<key_t> edges = {
+    // Flattened into bloom_key_t stream — 3 values per tuple
+    std::vector<bloom_key_t> edges = {
         200, 100, 1, // child 200 of 100, shell → alert, insert 200
         300, 200, 1, // child 300 of 200, shell → alert, insert 300
         400, 200, 0, // child 400 of 200, NOT shell → no alert, no insert
@@ -157,10 +157,10 @@ int main(int argc, char **argv) {
     krnl_bloom(edge_in, edge_out, num_values, MODE_BF_SUBTREE);
 
     // Expected: matched pid on alert, 0 on no match
-    key_t expected[] = {200, 300, 0, 0};
+    bloom_key_t expected[] = {200, 300, 0, 0};
     bool pass = true;
     for (int i = 0; i < num_tuples; i++) {
-      key_t r =
+      bloom_key_t r =
           edge_out[i / RESULTS_PER_BURST].results[i % RESULTS_PER_BURST];
       std::cout << "  edge " << i << ": match_pid=" << r
                 << " expected=" << expected[i] << std::endl;

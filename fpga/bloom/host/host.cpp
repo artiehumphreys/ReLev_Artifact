@@ -15,15 +15,15 @@
 // ppid==0 means seed (insert pid directly into BF).
 // Everything else is an edge tuple for subtree streaming.
 static void read_log(const std::string &filename,
-                     std::vector<key_t> &seeds,
-                     std::vector<key_t> &edges,
+                     std::vector<bloom_key_t> &seeds,
+                     std::vector<bloom_key_t> &edges,
                      uint32_t &num_tuples) {
   std::ifstream infile(filename);
   if (!infile.is_open()) {
     std::cerr << "Failed to open log file: " << filename << std::endl;
     std::exit(EXIT_FAILURE);
   }
-  key_t pid, ppid, is_target;
+  bloom_key_t pid, ppid, is_target;
   num_tuples = 0;
   while (infile >> pid >> ppid >> is_target) {
     if (ppid == 0) {
@@ -38,16 +38,16 @@ static void read_log(const std::string &filename,
 }
 
 static void run_kernel(xrt::kernel &krnl, xrt::device &device,
-                       const std::vector<key_t> &data, uint8_t mode) {
+                       const std::vector<bloom_key_t> &data, uint8_t mode) {
   uint32_t num_keys = data.size();
 
-  uint32_t input_bytes = num_keys * sizeof(key_t);
+  uint32_t input_bytes = num_keys * sizeof(bloom_key_t);
   uint32_t padded_input =
       ((input_bytes + IO_READ_BURST - 1) / IO_READ_BURST) * IO_READ_BURST;
 
   uint32_t num_results =
       (mode == MODE_BF_SUBTREE) ? num_keys / TUPLE_FIELDS : num_keys;
-  uint32_t output_bytes = num_results * sizeof(key_t);
+  uint32_t output_bytes = num_results * sizeof(bloom_key_t);
   uint32_t padded_output =
       ((output_bytes + IO_WRITE_BURST - 1) / IO_WRITE_BURST) * IO_WRITE_BURST;
 
@@ -80,14 +80,14 @@ static void run_kernel(xrt::kernel &krnl, xrt::device &device,
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  key_t *results = bo_out.map<key_t *>();
+  bloom_key_t *results = bo_out.map<bloom_key_t *>();
 
   if (mode == MODE_BF_SUBTREE) {
     int alerts = 0;
     for (uint32_t i = 0; i < num_results; i++) {
       if (results[i] != 0) {
-        key_t pid = results[i];
-        key_t ppid = data[i * TUPLE_FIELDS + 1];
+        bloom_key_t pid = results[i];
+        bloom_key_t ppid = data[i * TUPLE_FIELDS + 1];
         std::cout << "ALERT: shell spawn detected pid=" << pid << " ppid="
                   << ppid << std::endl;
         alerts++;
@@ -128,8 +128,8 @@ int main(int argc, char **argv) {
   std::cout << "KEY_BITS=" << KEY_BITS << std::endl;
 
   // Parse log into seeds (ppid==0) and edge tuples
-  std::vector<key_t> seeds;
-  std::vector<key_t> edges;
+  std::vector<bloom_key_t> seeds;
+  std::vector<bloom_key_t> edges;
   uint32_t num_tuples = 0;
   read_log(logFile, seeds, edges, num_tuples);
   std::cout << "Seeds: " << seeds.size() << "  Edges: " << num_tuples

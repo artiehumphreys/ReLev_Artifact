@@ -9,12 +9,12 @@
 #endif
 
 #if KEY_BITS == 16
-typedef uint16_t key_t;
+typedef uint16_t bloom_key_t;
 #define KEYS_PER_BURST 32    // 64 / 2
 #define TUPLES_PER_BURST 10  // 64 / (3*2)
 #define RESULTS_PER_BURST 32 // 64 / 2
 #elif KEY_BITS == 32
-typedef uint32_t key_t;
+typedef uint32_t bloom_key_t;
 #define KEYS_PER_BURST 16    // 64 / 4
 #define TUPLES_PER_BURST 5   // 64 / (3*4)
 #define RESULTS_PER_BURST 16 // 64 / 4
@@ -48,28 +48,28 @@ typedef uint32_t key_t;
 #define MODE_BF_SUBTREE 7 // stream mode
 
 struct KeyPack {
-  key_t keys[KEYS_PER_BURST];
+  bloom_key_t keys[KEYS_PER_BURST];
 };
 
 struct ResultPack {
-  key_t results[RESULTS_PER_BURST];
+  bloom_key_t results[RESULTS_PER_BURST];
 };
 
 struct KeyItem {
-  key_t key;
+  bloom_key_t key;
   uint8_t done;
 };
 
 struct ResultItem {
-  key_t result; // 0 = no match; for subtree mode, matched pid
+  bloom_key_t result; // 0 = no match; for subtree mode, matched pid
   uint8_t done;
 };
 
 // Edge tuple for streaming subtree mode (host-side convenience)
 struct EdgeItem {
-  key_t pid;
-  key_t ppid;
-  key_t is_target; // nonzero = target node type (e.g. shell)
+  bloom_key_t pid;
+  bloom_key_t ppid;
+  bloom_key_t is_target; // nonzero = target node type (e.g. shell)
 };
 
 extern "C" {
