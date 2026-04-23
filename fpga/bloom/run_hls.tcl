@@ -1,7 +1,7 @@
-# Key width: override with -tclargs <bits>
-#   vitis_hls -f run_hls.tcl -tclargs 16
-if {$argc > 0} {
-    set KEY_BITS [lindex $argv 0]
+# Key width: override with 2nd arg
+#   vitis_hls -f run_hls.tcl 16
+if {$argc > 2} {
+    set KEY_BITS [lindex $argv 2]
 } else {
     set KEY_BITS 32
 }
@@ -26,4 +26,4 @@ create_clock -period 1.25
 
 # Run C-simulation (pass keys file as argument)
 set curr_dir [pwd]
-csim_design -clean -argv "$curr_dir/keys.txt"
+csim_design -clean -argv "$curr_dir/log.txt"
