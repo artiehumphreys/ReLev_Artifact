@@ -1,6 +1,7 @@
 #include "krnl_bloom.hpp"
 #include "bloom_filter_hls.hpp"
 #include "counting_bloom_filter_hls.hpp"
+#include "cuckoo_filter_hls.hpp"
 
 // Read KeyPack bursts from HBM and unpack individual keys into a stream.
 static void read_input(KeyPack *in, hls::stream<KeyItem> &keyStream,
@@ -43,6 +44,10 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
 #pragma HLS BIND_STORAGE variable = cbf_counters type = ram_2p impl = bram
 #pragma HLS ARRAY_PARTITION variable = cbf_counters cyclic factor = 4
 
+  static uint8_t cf_table[CF_TABLE_BYTES];
+#pragma HLS BIND_STORAGE variable = cf_table type = ram_2p impl = bram
+#pragma HLS ARRAY_PARTITION variable = cf_table cyclic factor = CF_SLOTS_PER_BUCKET
+
   if (mode == MODE_BF_CLEAR) {
     for (uint32_t i = 0; i < BF_NUM_BYTES; i++) {
 #pragma HLS pipeline II = 1
@@ -69,6 +74,26 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
     for (uint32_t i = 0; i < CBF_SIZE; i++) {
 #pragma HLS pipeline II = 1
       cbf_counters[i] = 0;
+    }
+
+    while (1) {
+      KeyItem item;
+      keyStream >> item;
+      if (item.done)
+        break;
+    }
+
+    ResultItem done_item;
+    done_item.result = 0;
+    done_item.done = 1;
+    resultStream << done_item;
+    return;
+  }
+
+  if (mode == MODE_CF_CLEAR) {
+    for (uint32_t i = 0; i < CF_TABLE_BYTES; i++) {
+#pragma HLS pipeline II = 1
+      cf_table[i] = 0;
     }
 
     while (1) {
@@ -123,6 +148,81 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
     return;
   }
 
+  // CBF-backed subtree mode: same tuple protocol, supports removal via counters.
+  if (mode == MODE_CBF_SUBTREE) {
+    while (1) {
+      KeyItem pid_item;
+      keyStream >> pid_item;
+      if (pid_item.done) {
+        ResultItem done_item;
+        done_item.result = 0;
+        done_item.done = 1;
+        resultStream << done_item;
+        break;
+      }
+
+      KeyItem ppid_item;
+      keyStream >> ppid_item;
+
+      KeyItem target_item;
+      keyStream >> target_item;
+
+      bool ppid_found =
+          hls_cbf_query<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, ppid_item.key);
+
+      ResultItem res;
+      res.done = 0;
+
+      if (ppid_found && (target_item.key != 0)) {
+        hls_cbf_insert<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, pid_item.key);
+        res.result = pid_item.key;
+      } else {
+        res.result = 0;
+      }
+
+      resultStream << res;
+    }
+    return;
+  }
+
+  // Cuckoo-backed subtree mode: supports exact removal of PIDs.
+  if (mode == MODE_CF_SUBTREE) {
+    while (1) {
+      KeyItem pid_item;
+      keyStream >> pid_item;
+      if (pid_item.done) {
+        ResultItem done_item;
+        done_item.result = 0;
+        done_item.done = 1;
+        resultStream << done_item;
+        break;
+      }
+
+      KeyItem ppid_item;
+      keyStream >> ppid_item;
+
+      KeyItem target_item;
+      keyStream >> target_item;
+
+      bool ppid_found = hls_cuckoo_query<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(
+          cf_table, ppid_item.key);
+
+      ResultItem res;
+      res.done = 0;
+
+      if (ppid_found && (target_item.key != 0)) {
+        hls_cuckoo_insert<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
+                                                                pid_item.key);
+        res.result = pid_item.key;
+      } else {
+        res.result = 0;
+      }
+
+      resultStream << res;
+    }
+    return;
+  }
+
   // Process keys for INSERT/REMOVE/QUERY modes
   while (1) {
 #pragma HLS pipeline II = 1
@@ -162,6 +262,27 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
       res.result =
           hls_cbf_query<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, item.key) ? 1
                                                                           : 0;
+      break;
+    case MODE_CF_INSERT:
+      res.result =
+          hls_cuckoo_insert<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
+                                                                  item.key)
+              ? 1
+              : 0;
+      break;
+    case MODE_CF_QUERY:
+      res.result =
+          hls_cuckoo_query<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
+                                                                 item.key)
+              ? 1
+              : 0;
+      break;
+    case MODE_CF_REMOVE:
+      res.result =
+          hls_cuckoo_remove<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
+                                                                  item.key)
+              ? 1
+              : 0;
       break;
     default:
       res.result = 0;

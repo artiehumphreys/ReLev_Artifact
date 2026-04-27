@@ -34,6 +34,11 @@ typedef uint32_t bloom_key_t;
 #define CBF_SIZE 8192
 #define CBF_NUM_HASHES 3
 
+// Cuckoo filter parameters (NUM_BUCKETS must be power of 2)
+#define CF_NUM_BUCKETS 2048
+#define CF_SLOTS_PER_BUCKET 4
+#define CF_TABLE_BYTES (CF_NUM_BUCKETS * CF_SLOTS_PER_BUCKET)
+
 // Edge tuple: pid, ppid, is_target
 #define TUPLE_FIELDS 3
 
@@ -46,6 +51,12 @@ typedef uint32_t bloom_key_t;
 #define MODE_CBF_REMOVE 5
 #define MODE_CBF_QUERY 6
 #define MODE_BF_SUBTREE 7 // stream mode
+#define MODE_CBF_SUBTREE 8
+#define MODE_CF_CLEAR 9
+#define MODE_CF_INSERT 10
+#define MODE_CF_QUERY 11
+#define MODE_CF_REMOVE 12
+#define MODE_CF_SUBTREE 13
 
 struct KeyPack {
   bloom_key_t keys[KEYS_PER_BURST];
