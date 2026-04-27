@@ -1,5 +1,3 @@
-// g++ -std=c++17 -O2 -o bloom_fpr_test bloom_fpr_test.cpp
-
 #include "bloom_filter_hls.hpp"
 #include "counting_bloom_filter_hls.hpp"
 #include "cuckoo_filter_hls.hpp"
@@ -38,9 +36,9 @@ template <uint32_t SIZE, int NUM_HASHES, HashType HT>
 static void run(const char *label, uint32_t n, uint32_t nq) {
   double emp = measure_fpr<SIZE, NUM_HASHES, HT>(n, nq);
   double thy = theoretical_fpr(SIZE, NUM_HASHES, n);
-  std::cout << "  " << std::left << std::setw(15) << label
-            << std::fixed << std::setprecision(6)
-            << "  emp=" << emp << "  thy=" << thy << '\n';
+  std::cout << "  " << std::left << std::setw(15) << label << std::fixed
+            << std::setprecision(6) << "  emp=" << emp << "  thy=" << thy
+            << '\n';
 }
 
 template <uint32_t SIZE, int NUM_HASHES, HashType HT>
@@ -90,9 +88,9 @@ template <uint32_t SIZE, int NUM_HASHES, HashType HT>
 static void run_cbf(const char *label, uint32_t n, uint32_t rem, uint32_t nq) {
   double emp = measure_cbf_fpr<SIZE, NUM_HASHES, HT>(n, rem, nq);
   double thy = theoretical_fpr(SIZE, NUM_HASHES, n - rem);
-  std::cout << "  " << std::left << std::setw(15) << label
-            << std::fixed << std::setprecision(6)
-            << "  emp=" << emp << "  thy=" << thy << '\n';
+  std::cout << "  " << std::left << std::setw(15) << label << std::fixed
+            << std::setprecision(6) << "  emp=" << emp << "  thy=" << thy
+            << '\n';
 }
 
 template <uint32_t NUM_BUCKETS, int SLOTS, HashType HT>
@@ -117,9 +115,8 @@ static double measure_cf_fpr(uint32_t num_insert, uint32_t num_query) {
 template <uint32_t NUM_BUCKETS, int SLOTS, HashType HT>
 static void run_cf(const char *label, uint32_t n, uint32_t nq) {
   double emp = measure_cf_fpr<NUM_BUCKETS, SLOTS, HT>(n, nq);
-  std::cout << "  " << std::left << std::setw(15) << label
-            << std::fixed << std::setprecision(6)
-            << "  emp=" << emp << '\n';
+  std::cout << "  " << std::left << std::setw(15) << label << std::fixed
+            << std::setprecision(6) << "  emp=" << emp << '\n';
 }
 
 template <uint32_t NUM_BUCKETS, int SLOTS, HashType HT>
@@ -152,9 +149,8 @@ template <uint32_t NUM_BUCKETS, int SLOTS, HashType HT>
 static void run_cf_rem(const char *label, uint32_t n, uint32_t rem,
                        uint32_t nq) {
   double emp = measure_cf_fpr_remove<NUM_BUCKETS, SLOTS, HT>(n, rem, nq);
-  std::cout << "  " << std::left << std::setw(15) << label
-            << std::fixed << std::setprecision(6)
-            << "  emp=" << emp << '\n';
+  std::cout << "  " << std::left << std::setw(15) << label << std::fixed
+            << std::setprecision(6) << "  emp=" << emp << '\n';
 }
 
 template <uint32_t NUM_BUCKETS, int SLOTS, HashType HT>
@@ -177,84 +173,101 @@ static bool check_cf_no_fn(uint32_t n) {
 int main() {
   constexpr uint32_t NQ = 100000;
 
-  std::cout << "=== FPR (m=8192, k=3) ===\n";
+  std::cout << " BF — Bloom Filter (m=8192, k=3)\n";
 
-  std::cout << "\nn=500:\n";
+  std::cout << "\nFPR:\n";
+
+  std::cout << "\n  n=500:\n";
   run<8192, 3, HASH_XOR_SHIFT>("xor-shift-mul", 500, NQ);
   run<8192, 3, HASH_MURMUR3>("murmur3", 500, NQ);
   run<8192, 3, HASH_PIM>("pim (no mul)", 500, NQ);
 
-  std::cout << "\nn=2000:\n";
+  std::cout << "\n  n=2000:\n";
   run<8192, 3, HASH_XOR_SHIFT>("xor-shift-mul", 2000, NQ);
   run<8192, 3, HASH_MURMUR3>("murmur3", 2000, NQ);
   run<8192, 3, HASH_PIM>("pim (no mul)", 2000, NQ);
 
-  std::cout << "\nn=4000:\n";
+  std::cout << "\n  n=4000:\n";
   run<8192, 3, HASH_XOR_SHIFT>("xor-shift-mul", 4000, NQ);
   run<8192, 3, HASH_MURMUR3>("murmur3", 4000, NQ);
   run<8192, 3, HASH_PIM>("pim (no mul)", 4000, NQ);
 
-  std::cout << "\n=== CBF insert/remove (m=8192, k=3) ===\n";
+  std::cout << "\nNo false negatives (m=16384, k=3, n=1000):\n";
+  std::cout << "  xor-shift-mul   "
+            << (check_no_fn<16384, 3, HASH_XOR_SHIFT>(1000) ? "PASS" : "FAIL")
+            << '\n';
+  std::cout << "  murmur3         "
+            << (check_no_fn<16384, 3, HASH_MURMUR3>(1000) ? "PASS" : "FAIL")
+            << '\n';
+  std::cout << "  pim (no mul)    "
+            << (check_no_fn<16384, 3, HASH_PIM>(1000) ? "PASS" : "FAIL")
+            << '\n';
 
-  std::cout << "\ninsert 4000, remove 2000 (2000 remain):\n";
+  std::cout << " CBF — Counting Bloom Filter (m=8192, k=3)\n";
+
+  std::cout << "\nInsert/remove FPR:\n";
+
+  std::cout << "\n  insert 4000, remove 2000 (2000 remain):\n";
   run_cbf<8192, 3, HASH_XOR_SHIFT>("xor-shift-mul", 4000, 2000, NQ);
   run_cbf<8192, 3, HASH_MURMUR3>("murmur3", 4000, 2000, NQ);
   run_cbf<8192, 3, HASH_PIM>("pim (no mul)", 4000, 2000, NQ);
 
-  std::cout << "\ninsert 4000, remove 3500 (500 remain):\n";
+  std::cout << "\n  insert 4000, remove 3500 (500 remain):\n";
   run_cbf<8192, 3, HASH_XOR_SHIFT>("xor-shift-mul", 4000, 3500, NQ);
   run_cbf<8192, 3, HASH_MURMUR3>("murmur3", 4000, 3500, NQ);
   run_cbf<8192, 3, HASH_PIM>("pim (no mul)", 4000, 3500, NQ);
 
-  std::cout << "\ninsert 6000, remove 5000 (1000 remain):\n";
+  std::cout << "\n  insert 6000, remove 5000 (1000 remain):\n";
   run_cbf<8192, 3, HASH_XOR_SHIFT>("xor-shift-mul", 6000, 5000, NQ);
   run_cbf<8192, 3, HASH_MURMUR3>("murmur3", 6000, 5000, NQ);
   run_cbf<8192, 3, HASH_PIM>("pim (no mul)", 6000, 5000, NQ);
 
-  // CF: 2048 buckets * 4 slots = 8192 entries, 8-bit fingerprints
-  std::cout << "\n=== CF FPR (buckets=2048, slots=4) ===\n";
+  std::cout << " CF — Cuckoo Filter (buckets=2048, slots=4)\n";
 
-  std::cout << "\nn=500:\n";
+  std::cout << "\nFPR:\n";
+
+  std::cout << "\n  n=500:\n";
   run_cf<2048, 4, HASH_XOR_SHIFT>("xor-shift-mul", 500, NQ);
   run_cf<2048, 4, HASH_MURMUR3>("murmur3", 500, NQ);
   run_cf<2048, 4, HASH_PIM>("pim (no mul)", 500, NQ);
 
-  std::cout << "\nn=2000:\n";
+  std::cout << "\n  n=2000:\n";
   run_cf<2048, 4, HASH_XOR_SHIFT>("xor-shift-mul", 2000, NQ);
   run_cf<2048, 4, HASH_MURMUR3>("murmur3", 2000, NQ);
   run_cf<2048, 4, HASH_PIM>("pim (no mul)", 2000, NQ);
 
-  std::cout << "\nn=4000:\n";
+  std::cout << "\n  n=4000:\n";
   run_cf<2048, 4, HASH_XOR_SHIFT>("xor-shift-mul", 4000, NQ);
   run_cf<2048, 4, HASH_MURMUR3>("murmur3", 4000, NQ);
   run_cf<2048, 4, HASH_PIM>("pim (no mul)", 4000, NQ);
 
-  std::cout << "\n=== CF insert/remove (buckets=2048, slots=4) ===\n";
+  std::cout << "\nInsert/remove FPR:\n";
 
-  std::cout << "\ninsert 4000, remove 2000 (2000 remain):\n";
+  std::cout << "\n  insert 4000, remove 2000 (2000 remain):\n";
   run_cf_rem<2048, 4, HASH_XOR_SHIFT>("xor-shift-mul", 4000, 2000, NQ);
   run_cf_rem<2048, 4, HASH_MURMUR3>("murmur3", 4000, 2000, NQ);
   run_cf_rem<2048, 4, HASH_PIM>("pim (no mul)", 4000, 2000, NQ);
 
-  std::cout << "\ninsert 4000, remove 3500 (500 remain):\n";
+  std::cout << "\n  insert 4000, remove 3500 (500 remain):\n";
   run_cf_rem<2048, 4, HASH_XOR_SHIFT>("xor-shift-mul", 4000, 3500, NQ);
   run_cf_rem<2048, 4, HASH_MURMUR3>("murmur3", 4000, 3500, NQ);
   run_cf_rem<2048, 4, HASH_PIM>("pim (no mul)", 4000, 3500, NQ);
 
-  std::cout << "\ninsert 6000, remove 5000 (1000 remain):\n";
+  std::cout << "\n  insert 6000, remove 5000 (1000 remain):\n";
   run_cf_rem<2048, 4, HASH_XOR_SHIFT>("xor-shift-mul", 6000, 5000, NQ);
   run_cf_rem<2048, 4, HASH_MURMUR3>("murmur3", 6000, 5000, NQ);
   run_cf_rem<2048, 4, HASH_PIM>("pim (no mul)", 6000, 5000, NQ);
 
-  std::cout << "\n=== No False Negatives (m=16384, k=3, n=1000) ===\n";
-  std::cout << "  xor-shift-mul   " << (check_no_fn<16384, 3, HASH_XOR_SHIFT>(1000) ? "PASS" : "FAIL") << '\n';
-  std::cout << "  murmur3         " << (check_no_fn<16384, 3, HASH_MURMUR3>(1000) ? "PASS" : "FAIL") << '\n';
-  std::cout << "  pim (no mul)    " << (check_no_fn<16384, 3, HASH_PIM>(1000) ? "PASS" : "FAIL") << '\n';
-
-  std::cout << "\n=== CF No False Negatives (buckets=2048, slots=4, n=1000) ===\n";
-  std::cout << "  xor-shift-mul   " << (check_cf_no_fn<2048, 4, HASH_XOR_SHIFT>(1000) ? "PASS" : "FAIL") << '\n';
-  std::cout << "  murmur3         " << (check_cf_no_fn<2048, 4, HASH_MURMUR3>(1000) ? "PASS" : "FAIL") << '\n';
-  std::cout << "  pim (no mul)    " << (check_cf_no_fn<2048, 4, HASH_PIM>(1000) ? "PASS" : "FAIL") << '\n';
+  std::cout << "\nNo false negatives (buckets=2048, slots=4, n=1000):\n";
+  std::cout << "  xor-shift-mul   "
+            << (check_cf_no_fn<2048, 4, HASH_XOR_SHIFT>(1000) ? "PASS" : "FAIL")
+            << '\n';
+  std::cout << "  murmur3         "
+            << (check_cf_no_fn<2048, 4, HASH_MURMUR3>(1000) ? "PASS" : "FAIL")
+            << '\n';
+  std::cout << "  pim (no mul)    "
+            << (check_cf_no_fn<2048, 4, HASH_PIM>(1000) ? "PASS" : "FAIL")
+            << '\n';
 
   return 0;
 }
