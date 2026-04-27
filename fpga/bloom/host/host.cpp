@@ -12,25 +12,33 @@
 #include "experimental/xrt_device.h"
 #include "experimental/xrt_kernel.h"
 
-// Read log file.  Each line: pid ppid is_shell
-// ppid==0 means seed (insert pid directly into BF).
-// Everything else is an edge tuple for subtree streaming.
+// Read log file.  Each line: pid ppid is_target
+//   ppid==0 means seed (insert pid directly).
+//   negative pid means removal: "-200 0 0" → remove pid 200 from filter.
+//   everything else is an edge tuple for subtree streaming.
 static void read_log(const std::string &filename,
                      std::vector<bloom_key_t> &seeds,
                      std::vector<bloom_key_t> &edges,
                      uint32_t &num_tuples) {
   std::ifstream infile(filename);
   if (!infile.is_open()) {
-    std::cerr << "Failed to open log file: " << filename << std::endl;
+    std::cerr << "Failed to open log file: " << filename << '\n';
     std::exit(EXIT_FAILURE);
   }
-  bloom_key_t pid, ppid, is_target;
+  int64_t raw_pid;
+  bloom_key_t ppid, is_target;
   num_tuples = 0;
-  while (infile >> pid >> ppid >> is_target) {
-    if (ppid == 0) {
-      seeds.push_back(pid);
-    } else {
+  while (infile >> raw_pid >> ppid >> is_target) {
+    if (raw_pid < 0) {
+      bloom_key_t pid = static_cast<bloom_key_t>(-raw_pid);
       edges.push_back(pid);
+      edges.push_back(0);
+      edges.push_back(TUPLE_REMOVE);
+      num_tuples++;
+    } else if (ppid == 0) {
+      seeds.push_back(static_cast<bloom_key_t>(raw_pid));
+    } else {
+      edges.push_back(static_cast<bloom_key_t>(raw_pid));
       edges.push_back(ppid);
       edges.push_back(is_target);
       num_tuples++;

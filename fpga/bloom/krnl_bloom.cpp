@@ -130,17 +130,21 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
       KeyItem target_item;
       keyStream >> target_item;
 
-      bool ppid_found =
-          hls_bloom_query<BF_SIZE, BF_NUM_HASHES>(bf_bits, ppid_item.key);
-
       ResultItem res;
       res.done = 0;
 
-      if (ppid_found && (target_item.key != 0)) {
-        hls_bloom_insert<BF_SIZE, BF_NUM_HASHES>(bf_bits, pid_item.key);
-        res.result = pid_item.key; // alert: emit matched pid
-      } else {
+      if (target_item.key == TUPLE_REMOVE) {
+        // BF cannot delete — skip
         res.result = 0;
+      } else {
+        bool ppid_found =
+            hls_bloom_query<BF_SIZE, BF_NUM_HASHES>(bf_bits, ppid_item.key);
+        if (ppid_found && (target_item.key != 0)) {
+          hls_bloom_insert<BF_SIZE, BF_NUM_HASHES>(bf_bits, pid_item.key);
+          res.result = pid_item.key;
+        } else {
+          res.result = 0;
+        }
       }
 
       resultStream << res;
@@ -167,17 +171,21 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
       KeyItem target_item;
       keyStream >> target_item;
 
-      bool ppid_found =
-          hls_cbf_query<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, ppid_item.key);
-
       ResultItem res;
       res.done = 0;
 
-      if (ppid_found && (target_item.key != 0)) {
-        hls_cbf_insert<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, pid_item.key);
-        res.result = pid_item.key;
-      } else {
+      if (target_item.key == TUPLE_REMOVE) {
+        hls_cbf_remove<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, pid_item.key);
         res.result = 0;
+      } else {
+        bool ppid_found =
+            hls_cbf_query<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, ppid_item.key);
+        if (ppid_found && (target_item.key != 0)) {
+          hls_cbf_insert<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, pid_item.key);
+          res.result = pid_item.key;
+        } else {
+          res.result = 0;
+        }
       }
 
       resultStream << res;
@@ -204,18 +212,24 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
       KeyItem target_item;
       keyStream >> target_item;
 
-      bool ppid_found = hls_cuckoo_query<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(
-          cf_table, ppid_item.key);
-
       ResultItem res;
       res.done = 0;
 
-      if (ppid_found && (target_item.key != 0)) {
-        hls_cuckoo_insert<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
+      if (target_item.key == TUPLE_REMOVE) {
+        hls_cuckoo_remove<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
                                                                 pid_item.key);
-        res.result = pid_item.key;
-      } else {
         res.result = 0;
+      } else {
+        bool ppid_found =
+            hls_cuckoo_query<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(
+                cf_table, ppid_item.key);
+        if (ppid_found && (target_item.key != 0)) {
+          hls_cuckoo_insert<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
+                                                                  pid_item.key);
+          res.result = pid_item.key;
+        } else {
+          res.result = 0;
+        }
       }
 
       resultStream << res;

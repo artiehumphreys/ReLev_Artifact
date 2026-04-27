@@ -41,6 +41,8 @@ typedef uint32_t bloom_key_t;
 
 // Edge tuple: pid, ppid, is_target
 #define TUPLE_FIELDS 3
+// is_target sentinel for removal: "-pid 0 0" in log → (pid, 0, TUPLE_REMOVE)
+#define TUPLE_REMOVE 0xFFFFFFFF
 
 // Operation modes
 #define MODE_BF_CLEAR 0
