@@ -13,7 +13,7 @@ else
   make host TARGET="$TARGET"
   XCLBIN="bloom.${TARGET}.xclbin"
   if [ "$TARGET" = "hw_emu" ]; then
-    make "$BLOOM_DIR/emconfig.json"
+    make emconfig.json
     export XCL_EMULATION_MODE="$TARGET"
   fi
   ./host.exe "$XCLBIN" "$LOG_FILE" cbf
