@@ -4,6 +4,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <vector>
 
 // XRT includes
@@ -45,8 +46,9 @@ static void run_kernel(xrt::kernel &krnl, xrt::device &device,
   uint32_t padded_input =
       ((input_bytes + IO_READ_BURST - 1) / IO_READ_BURST) * IO_READ_BURST;
 
-  uint32_t num_results =
-      (mode == MODE_BF_SUBTREE) ? num_keys / TUPLE_FIELDS : num_keys;
+  bool is_subtree = (mode == MODE_BF_SUBTREE || mode == MODE_CBF_SUBTREE ||
+                     mode == MODE_CF_SUBTREE);
+  uint32_t num_results = is_subtree ? num_keys / TUPLE_FIELDS : num_keys;
   uint32_t output_bytes = num_results * sizeof(bloom_key_t);
   uint32_t padded_output =
       ((output_bytes + IO_WRITE_BURST - 1) / IO_WRITE_BURST) * IO_WRITE_BURST;
@@ -82,18 +84,18 @@ static void run_kernel(xrt::kernel &krnl, xrt::device &device,
 
   bloom_key_t *results = bo_out.map<bloom_key_t *>();
 
-  if (mode == MODE_BF_SUBTREE) {
+  if (is_subtree) {
     int alerts = 0;
     for (uint32_t i = 0; i < num_results; i++) {
       if (results[i] != 0) {
         bloom_key_t pid = results[i];
         bloom_key_t ppid = data[i * TUPLE_FIELDS + 1];
         std::cout << "ALERT: shell spawn detected pid=" << pid << " ppid="
-                  << ppid << std::endl;
+                  << ppid << '\n';
         alerts++;
       }
     }
-    std::cout << "Total alerts: " << alerts << "/" << num_results << std::endl;
+    std::cout << "Total alerts: " << alerts << "/" << num_results << '\n';
   }
 
   double duration =
@@ -107,46 +109,60 @@ static void run_kernel(xrt::kernel &krnl, xrt::device &device,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cerr << "Usage: " << argv[0] << " <XCLBIN> <log_file>\n"
-              << "  log_file: one \"pid ppid is_shell\" per line\n"
+  if (argc < 3 || argc > 4) {
+    std::cerr << "Usage: " << argv[0] << " <XCLBIN> <log_file> [bf|cbf|cf]\n"
+              << "  log_file: one \"pid ppid is_target\" per line\n"
               << "            ppid=0 marks a seed (root of suspicious tree)\n"
-              << "  Compiled with KEY_BITS=" << KEY_BITS << std::endl;
+              << "  filter:   bf (default), cbf, cf\n"
+              << "  KEY_BITS=" << KEY_BITS << '\n';
     return EXIT_FAILURE;
   }
 
   std::string binaryFile = argv[1];
   std::string logFile = argv[2];
+  std::string filter = (argc == 4) ? argv[3] : "bf";
+
+  uint8_t mode_clear, mode_insert, mode_subtree;
+  if (filter == "bf") {
+    mode_clear = MODE_BF_CLEAR;
+    mode_insert = MODE_BF_INSERT;
+    mode_subtree = MODE_BF_SUBTREE;
+  } else if (filter == "cbf") {
+    mode_clear = MODE_CBF_CLEAR;
+    mode_insert = MODE_CBF_INSERT;
+    mode_subtree = MODE_CBF_SUBTREE;
+  } else if (filter == "cf") {
+    mode_clear = MODE_CF_CLEAR;
+    mode_insert = MODE_CF_INSERT;
+    mode_subtree = MODE_CF_SUBTREE;
+  } else {
+    std::cerr << "Unknown filter: " << filter << " (use bf, cbf, or cf)\n";
+    return EXIT_FAILURE;
+  }
 
   int device_index = 0;
-  std::cout << "Opening device " << device_index << std::endl;
+  std::cout << "Opening device " << device_index << '\n';
   auto device = xrt::device(device_index);
-  std::cout << "Loading xclbin: " << binaryFile << std::endl;
+  std::cout << "Loading xclbin: " << binaryFile << '\n';
   auto uuid = device.load_xclbin(binaryFile);
   xrt::kernel krnl = xrt::kernel(device, uuid, "krnl_bloom");
 
-  std::cout << "KEY_BITS=" << KEY_BITS << std::endl;
+  std::cout << "filter=" << filter << "  KEY_BITS=" << KEY_BITS << '\n';
 
-  // Parse log into seeds (ppid==0) and edge tuples
   std::vector<bloom_key_t> seeds;
   std::vector<bloom_key_t> edges;
   uint32_t num_tuples = 0;
   read_log(logFile, seeds, edges, num_tuples);
-  std::cout << "Seeds: " << seeds.size() << "  Edges: " << num_tuples
-            << std::endl;
+  std::cout << "Seeds: " << seeds.size() << "  Edges: " << num_tuples << '\n';
 
-  // Clear BF
-  std::cout << "\n--- Clearing BF ---" << std::endl;
-  run_kernel(krnl, device, seeds, MODE_BF_CLEAR);
+  std::cout << "\n--- Clearing filter ---\n";
+  run_kernel(krnl, device, seeds, mode_clear);
 
-  // Seed known-bad PIDs
-  std::cout << "\n--- Seeding " << seeds.size() << " root PIDs ---"
-            << std::endl;
-  run_kernel(krnl, device, seeds, MODE_BF_INSERT);
+  std::cout << "\n--- Seeding " << seeds.size() << " root PIDs ---\n";
+  run_kernel(krnl, device, seeds, mode_insert);
 
-  // Stream edges, detect shell spawns
-  std::cout << "\n--- Streaming " << num_tuples << " edges ---" << std::endl;
-  run_kernel(krnl, device, edges, MODE_BF_SUBTREE);
+  std::cout << "\n--- Streaming " << num_tuples << " edges ---\n";
+  run_kernel(krnl, device, edges, mode_subtree);
 
   return 0;
 }
