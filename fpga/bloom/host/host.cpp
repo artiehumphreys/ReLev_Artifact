@@ -12,14 +12,8 @@
 #include "experimental/xrt_device.h"
 #include "experimental/xrt_kernel.h"
 
-// Read log file.  Each line: pid ppid is_target
-//   ppid==0 means seed (insert pid directly).
-//   negative pid means removal: "-200 0 0" → remove pid 200 from filter.
-//   everything else is an edge tuple for subtree streaming.
 static void read_log(const std::string &filename,
-                     std::vector<bloom_key_t> &seeds,
-                     std::vector<bloom_key_t> &edges,
-                     uint32_t &num_tuples) {
+                     std::vector<bloom_key_t> &edges, uint32_t &num_tuples) {
   std::ifstream infile(filename);
   if (!infile.is_open()) {
     std::cerr << "Failed to open log file: " << filename << '\n';
@@ -34,15 +28,14 @@ static void read_log(const std::string &filename,
       edges.push_back(pid);
       edges.push_back(0);
       edges.push_back(TUPLE_REMOVE);
-      num_tuples++;
-    } else if (ppid == 0) {
-      seeds.push_back(static_cast<bloom_key_t>(raw_pid));
     } else {
+      // Seeds (ppid==0) and normal edges share the same triplet shape.
+      // Kernel branches on ppid==0 internally.
       edges.push_back(static_cast<bloom_key_t>(raw_pid));
       edges.push_back(ppid);
       edges.push_back(is_target);
-      num_tuples++;
     }
+    num_tuples++;
   }
 }
 
@@ -98,8 +91,8 @@ static void run_kernel(xrt::kernel &krnl, xrt::device &device,
       if (results[i] != 0) {
         bloom_key_t pid = results[i];
         bloom_key_t ppid = data[i * TUPLE_FIELDS + 1];
-        std::cout << "ALERT: shell spawn detected pid=" << pid << " ppid="
-                  << ppid << '\n';
+        std::cout << "ALERT: shell spawn detected pid=" << pid
+                  << " ppid=" << ppid << '\n';
         alerts++;
       }
     }
@@ -122,7 +115,8 @@ int main(int argc, char **argv) {
               << "  log_file: one \"pid ppid is_target\" per line\n"
               << "            ppid=0 marks a seed (root of suspicious tree)\n"
               << "  filter:   bf (default), cbf, cf\n"
-              << "  KEY_BITS=" << KEY_BITS << '\n';
+              << "  KEY_BITS=" << KEY_BITS << "  NUM_ROOTS=" << NUM_ROOTS
+              << '\n';
     return EXIT_FAILURE;
   }
 
@@ -130,18 +124,15 @@ int main(int argc, char **argv) {
   std::string logFile = argv[2];
   std::string filter = (argc == 4) ? argv[3] : "bf";
 
-  uint8_t mode_clear, mode_insert, mode_subtree;
+  uint8_t mode_clear, mode_subtree;
   if (filter == "bf") {
     mode_clear = MODE_BF_CLEAR;
-    mode_insert = MODE_BF_INSERT;
     mode_subtree = MODE_BF_SUBTREE;
   } else if (filter == "cbf") {
     mode_clear = MODE_CBF_CLEAR;
-    mode_insert = MODE_CBF_INSERT;
     mode_subtree = MODE_CBF_SUBTREE;
   } else if (filter == "cf") {
     mode_clear = MODE_CF_CLEAR;
-    mode_insert = MODE_CF_INSERT;
     mode_subtree = MODE_CF_SUBTREE;
   } else {
     std::cerr << "Unknown filter: " << filter << " (use bf, cbf, or cf)\n";
@@ -155,21 +146,20 @@ int main(int argc, char **argv) {
   auto uuid = device.load_xclbin(binaryFile);
   xrt::kernel krnl = xrt::kernel(device, uuid, "krnl_bloom");
 
-  std::cout << "filter=" << filter << "  KEY_BITS=" << KEY_BITS << '\n';
+  std::cout << "filter=" << filter << "  KEY_BITS=" << KEY_BITS
+            << "  NUM_ROOTS=" << NUM_ROOTS << '\n';
 
-  std::vector<bloom_key_t> seeds;
   std::vector<bloom_key_t> edges;
   uint32_t num_tuples = 0;
-  read_log(logFile, seeds, edges, num_tuples);
-  std::cout << "Seeds: " << seeds.size() << "  Edges: " << num_tuples << '\n';
+  read_log(logFile, edges, num_tuples);
+  std::cout << "Tuples: " << num_tuples << '\n';
 
+  // CLEAR pass still needs a non-empty buffer to satisfy the burst reader.
+  std::vector<bloom_key_t> dummy(1, 0);
   std::cout << "\n--- Clearing filter ---\n";
-  run_kernel(krnl, device, seeds, mode_clear);
+  run_kernel(krnl, device, dummy, mode_clear);
 
-  std::cout << "\n--- Seeding " << seeds.size() << " root PIDs ---\n";
-  run_kernel(krnl, device, seeds, mode_insert);
-
-  std::cout << "\n--- Streaming " << num_tuples << " edges ---\n";
+  std::cout << "\n--- Streaming " << num_tuples << " tuples ---\n";
   run_kernel(krnl, device, edges, mode_subtree);
 
   return 0;

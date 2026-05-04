@@ -205,7 +205,7 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
         next_root_bf++;
         hls_bloom_insert_at<NUM_ROOTS, BF_SIZE_PER_ROOT, BF_NUM_HASHES>(
             bf_roots, r, pid_item.key);
-        res.result = pid_item.key;
+        // seed: no alert
       } else if (target_item.key == TUPLE_REMOVE) {
         // BF cannot delete — drop
       } else {
@@ -258,7 +258,7 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
         next_root_cbf++;
         hls_cbf_insert_at<NUM_ROOTS, CBF_SIZE_PER_ROOT, CBF_NUM_HASHES>(
             cbf_roots, r, pid_item.key);
-        res.result = pid_item.key;
+        // seed: no alert
       } else if (target_item.key == TUPLE_REMOVE) {
         uint64_t hits =
             hls_cbf_query_all<NUM_ROOTS, CBF_SIZE_PER_ROOT, CBF_NUM_HASHES>(
@@ -321,7 +321,7 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
         next_root_cf++;
         hls_cuckoo_insert_at<NUM_ROOTS, CF_NUM_BUCKETS_PER_ROOT,
                              CF_SLOTS_PER_BUCKET>(cf_roots, r, pid_item.key);
-        res.result = pid_item.key;
+        // seed: no alert
       } else if (target_item.key == TUPLE_REMOVE) {
         uint64_t hits =
             hls_cuckoo_query_all<NUM_ROOTS, CF_NUM_BUCKETS_PER_ROOT,

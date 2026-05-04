@@ -50,6 +50,11 @@ typedef uint32_t bloom_key_t;
 #define CF_NUM_BUCKETS_PER_ROOT (CF_NUM_BUCKETS / NUM_ROOTS)
 #define CF_TABLE_BYTES_PER_ROOT (CF_NUM_BUCKETS_PER_ROOT * CF_SLOTS_PER_BUCKET)
 
+static_assert((NUM_ROOTS & (NUM_ROOTS - 1)) == 0,
+              "NUM_ROOTS must be a power of 2 (mask wrap on seed allocation)");
+static_assert(NUM_ROOTS <= 64,
+              "NUM_ROOTS must be <= 64 (hit mask packed into uint64_t)");
+
 // Edge tuple: pid, ppid, is_target
 #define TUPLE_FIELDS 3
 // is_target sentinel for removal: "-pid 0 0" in log → (pid, 0, TUPLE_REMOVE)

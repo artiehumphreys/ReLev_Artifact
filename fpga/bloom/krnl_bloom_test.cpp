@@ -120,32 +120,31 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  // --- Streaming Subtree (shell-spawn path detection) ---
-  std::cout << "\n=== Subtree Streaming Test ===" << std::endl;
-
-  // Clear BF, then seed PID 100 as known-bad root
+  // --- Streaming Subtree (shell-spawn path detection, per-root BFs) ---
+  std::cout << "\n=== Subtree Streaming Test (NUM_ROOTS=" << NUM_ROOTS
+            << ") ===" << std::endl;
   {
-    std::vector<bloom_key_t> seed = {100};
-    int seed_n = seed.size();
-    int seed_bursts = (seed_n + KEYS_PER_BURST - 1) / KEYS_PER_BURST;
-    KeyPack *seed_in = new KeyPack[seed_bursts]();
-    ResultPack *seed_out = new ResultPack[1]();
+    // Clear pass needs a non-empty buffer.
+    std::vector<bloom_key_t> dummy = {0};
+    int dummy_bursts = 1;
+    KeyPack *clear_in = new KeyPack[dummy_bursts]();
+    ResultPack *clear_out = new ResultPack[1]();
+    pack_keys(dummy, clear_in);
+    krnl_bloom(clear_in, clear_out, 1, MODE_BF_CLEAR);
+    delete[] clear_in;
+    delete[] clear_out;
 
-    pack_keys(seed, seed_in);
-    krnl_bloom(seed_in, seed_out, seed_n, MODE_BF_CLEAR);
-    krnl_bloom(seed_in, seed_out, seed_n, MODE_BF_INSERT);
-    std::cout << "Seeded PID 100 into BF" << std::endl;
-
-    // Edge tuples: (pid, ppid, is_target)
-    // Flattened into bloom_key_t stream — 3 values per tuple
-    std::vector<bloom_key_t> edges = {
-        200, 100, 1, // child 200 of 100, shell → alert, insert 200
-        300, 200, 1, // child 300 of 200, shell → alert, insert 300
-        400, 200, 0, // child 400 of 200, NOT shell → no alert, no insert
-        500, 999, 1, // child 500 of 999 (not in BF) → no alert
+    // All tuples — including seed (100, 0, 1) — flow through one subtree pass.
+    // Seeds emit 0 (no alert); edges emit pid on hit, 0 otherwise.
+    std::vector<bloom_key_t> tuples = {
+        100, 0,   1, // seed: alloc root, insert 100  → 0
+        200, 100, 1, // child of 100, target → alert  → 200
+        300, 200, 1, // child of 200, target → alert  → 300
+        400, 200, 0, // child of 200, not target      → 0
+        500, 999, 1, // 999 not tracked               → 0
     };
 
-    int num_values = edges.size();
+    int num_values = tuples.size();
     int num_tuples = num_values / TUPLE_FIELDS;
     int edge_bursts = (num_values + KEYS_PER_BURST - 1) / KEYS_PER_BURST;
     int edge_out_packs = (num_tuples + RESULTS_PER_BURST - 1) / RESULTS_PER_BURST;
@@ -153,16 +152,15 @@ int main(int argc, char **argv) {
     KeyPack *edge_in = new KeyPack[edge_bursts]();
     ResultPack *edge_out = new ResultPack[edge_out_packs]();
 
-    pack_keys(edges, edge_in);
+    pack_keys(tuples, edge_in);
     krnl_bloom(edge_in, edge_out, num_values, MODE_BF_SUBTREE);
 
-    // Expected: matched pid on alert, 0 on no match
-    bloom_key_t expected[] = {200, 300, 0, 0};
+    bloom_key_t expected[] = {0, 200, 300, 0, 0};
     bool pass = true;
     for (int i = 0; i < num_tuples; i++) {
       bloom_key_t r =
           edge_out[i / RESULTS_PER_BURST].results[i % RESULTS_PER_BURST];
-      std::cout << "  edge " << i << ": match_pid=" << r
+      std::cout << "  tuple " << i << ": result=" << r
                 << " expected=" << expected[i] << std::endl;
       if (r != expected[i])
         pass = false;
@@ -170,8 +168,6 @@ int main(int argc, char **argv) {
 
     if (!pass) {
       std::cerr << "FAIL: Subtree alerts mismatch!" << std::endl;
-      delete[] seed_in;
-      delete[] seed_out;
       delete[] edge_in;
       delete[] edge_out;
       delete[] input;
@@ -180,8 +176,6 @@ int main(int argc, char **argv) {
     }
     std::cout << "Subtree test: PASS" << std::endl;
 
-    delete[] seed_in;
-    delete[] seed_out;
     delete[] edge_in;
     delete[] edge_out;
   }
