@@ -32,8 +32,29 @@ static void read_input(KeyPack *in, hls::stream<KeyItem> &keyStream,
   keyStream << sentinel;
 }
 
-// Process keys through the bloom filter / counting bloom filter.
-// Uses static BRAM arrays that persist across kernel invocations.
+// Per-root state for *_SUBTREE modes — dim 1 partitioned so all NUM_ROOTS
+// banks read in parallel for query_all.
+static inline int popcount64(uint64_t v) {
+#pragma HLS INLINE
+  int c = 0;
+  for (int i = 0; i < 64; i++) {
+#pragma HLS UNROLL
+    if (v & (static_cast<uint64_t>(1) << i))
+      c++;
+  }
+  return c;
+}
+
+static inline uint32_t first_set64(uint64_t v) {
+#pragma HLS INLINE
+  for (uint32_t i = 0; i < 64; i++) {
+#pragma HLS UNROLL
+    if (v & (static_cast<uint64_t>(1) << i))
+      return i;
+  }
+  return 64;
+}
+
 static void bloom_process(hls::stream<KeyItem> &keyStream,
                           hls::stream<ResultItem> &resultStream, uint8_t mode) {
   static uint8_t bf_bits[BF_NUM_BYTES];
@@ -46,13 +67,38 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
 
   static uint8_t cf_table[CF_TABLE_BYTES];
 #pragma HLS BIND_STORAGE variable = cf_table type = ram_2p impl = bram
-#pragma HLS ARRAY_PARTITION variable = cf_table cyclic factor = CF_SLOTS_PER_BUCKET
+#pragma HLS ARRAY_PARTITION variable = cf_table cyclic factor =                \
+    CF_SLOTS_PER_BUCKET
+
+  static uint8_t bf_roots[NUM_ROOTS][BF_NUM_BYTES_PER_ROOT];
+#pragma HLS BIND_STORAGE variable = bf_roots type = ram_2p impl = bram
+#pragma HLS ARRAY_PARTITION variable = bf_roots dim = 1 complete
+
+  static uint8_t cbf_roots[NUM_ROOTS][CBF_SIZE_PER_ROOT];
+#pragma HLS BIND_STORAGE variable = cbf_roots type = ram_2p impl = bram
+#pragma HLS ARRAY_PARTITION variable = cbf_roots dim = 1 complete
+
+  static uint8_t cf_roots[NUM_ROOTS][CF_TABLE_BYTES_PER_ROOT];
+#pragma HLS BIND_STORAGE variable = cf_roots type = ram_2p impl = bram
+#pragma HLS ARRAY_PARTITION variable = cf_roots dim = 1 complete
+
+  static uint32_t next_root_bf = 0;
+  static uint32_t next_root_cbf = 0;
+  static uint32_t next_root_cf = 0;
 
   if (mode == MODE_BF_CLEAR) {
     for (uint32_t i = 0; i < BF_NUM_BYTES; i++) {
 #pragma HLS pipeline II = 1
       bf_bits[i] = 0;
     }
+    for (uint32_t r = 0; r < NUM_ROOTS; r++) {
+#pragma HLS UNROLL
+      for (uint32_t i = 0; i < BF_NUM_BYTES_PER_ROOT; i++) {
+#pragma HLS pipeline II = 1
+        bf_roots[r][i] = 0;
+      }
+    }
+    next_root_bf = 0;
 
     // read until done sentinel
     while (1) {
@@ -75,6 +121,14 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
 #pragma HLS pipeline II = 1
       cbf_counters[i] = 0;
     }
+    for (uint32_t r = 0; r < NUM_ROOTS; r++) {
+#pragma HLS UNROLL
+      for (uint32_t i = 0; i < CBF_SIZE_PER_ROOT; i++) {
+#pragma HLS pipeline II = 1
+        cbf_roots[r][i] = 0;
+      }
+    }
+    next_root_cbf = 0;
 
     while (1) {
       KeyItem item;
@@ -95,6 +149,14 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
 #pragma HLS pipeline II = 1
       cf_table[i] = 0;
     }
+    for (uint32_t r = 0; r < NUM_ROOTS; r++) {
+#pragma HLS UNROLL
+      for (uint32_t i = 0; i < CF_TABLE_BYTES_PER_ROOT; i++) {
+#pragma HLS pipeline II = 1
+        cf_roots[r][i] = 0;
+      }
+    }
+    next_root_cf = 0;
 
     while (1) {
       KeyItem item;
@@ -110,8 +172,12 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
     return;
   }
 
-  // Subtree mode: stream (pid, ppid, is_target) tuples.
-  // Query ppid in BF; if found AND is_target, insert pid and emit alert.
+  // Per-root subtree mode: stream (pid, ppid, is_target) tuples.
+  //   ppid == 0          → seed: allocate next root, insert pid there.
+  //   target == REMOVE   → BF cannot delete; skip.
+  //   else               → parallel query_all on ppid across all NUM_ROOTS BFs.
+  //                        Permissive policy: on any hit AND target != 0,
+  //                        insert pid into every hit root and emit alert.
   if (mode == MODE_BF_SUBTREE) {
     while (1) {
       KeyItem pid_item;
@@ -132,18 +198,29 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
 
       ResultItem res;
       res.done = 0;
+      res.result = 0;
 
-      if (target_item.key == TUPLE_REMOVE) {
-        // BF cannot delete — skip
-        res.result = 0;
+      if (ppid_item.key == 0) {
+        uint32_t r = next_root_bf & (NUM_ROOTS - 1);
+        next_root_bf++;
+        hls_bloom_insert_at<NUM_ROOTS, BF_SIZE_PER_ROOT, BF_NUM_HASHES>(
+            bf_roots, r, pid_item.key);
+        res.result = pid_item.key;
+      } else if (target_item.key == TUPLE_REMOVE) {
+        // BF cannot delete — drop
       } else {
-        bool ppid_found =
-            hls_bloom_query<BF_SIZE, BF_NUM_HASHES>(bf_bits, ppid_item.key);
-        if (ppid_found && (target_item.key != 0)) {
-          hls_bloom_insert<BF_SIZE, BF_NUM_HASHES>(bf_bits, pid_item.key);
+        uint64_t hits =
+            hls_bloom_query_all<NUM_ROOTS, BF_SIZE_PER_ROOT, BF_NUM_HASHES>(
+                bf_roots, ppid_item.key);
+        if (hits != 0 && target_item.key != 0) {
+          for (uint32_t r = 0; r < NUM_ROOTS; r++) {
+#pragma HLS UNROLL
+            if (hits & (static_cast<uint64_t>(1) << r)) {
+              hls_bloom_insert_at<NUM_ROOTS, BF_SIZE_PER_ROOT, BF_NUM_HASHES>(
+                  bf_roots, r, pid_item.key);
+            }
+          }
           res.result = pid_item.key;
-        } else {
-          res.result = 0;
         }
       }
 
@@ -152,7 +229,8 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
     return;
   }
 
-  // CBF-backed subtree mode: same tuple protocol, supports removal via counters.
+  // Per-root CBF subtree mode: same protocol, supports removal.
+  // Permissive policy: insert into / remove from every hit root.
   if (mode == MODE_CBF_SUBTREE) {
     while (1) {
       KeyItem pid_item;
@@ -173,18 +251,38 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
 
       ResultItem res;
       res.done = 0;
+      res.result = 0;
 
-      if (target_item.key == TUPLE_REMOVE) {
-        hls_cbf_remove<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, pid_item.key);
-        res.result = 0;
+      if (ppid_item.key == 0) {
+        uint32_t r = next_root_cbf & (NUM_ROOTS - 1);
+        next_root_cbf++;
+        hls_cbf_insert_at<NUM_ROOTS, CBF_SIZE_PER_ROOT, CBF_NUM_HASHES>(
+            cbf_roots, r, pid_item.key);
+        res.result = pid_item.key;
+      } else if (target_item.key == TUPLE_REMOVE) {
+        uint64_t hits =
+            hls_cbf_query_all<NUM_ROOTS, CBF_SIZE_PER_ROOT, CBF_NUM_HASHES>(
+                cbf_roots, pid_item.key);
+        for (uint32_t r = 0; r < NUM_ROOTS; r++) {
+#pragma HLS UNROLL
+          if (hits & (static_cast<uint64_t>(1) << r)) {
+            hls_cbf_remove_at<NUM_ROOTS, CBF_SIZE_PER_ROOT, CBF_NUM_HASHES>(
+                cbf_roots, r, pid_item.key);
+          }
+        }
       } else {
-        bool ppid_found =
-            hls_cbf_query<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, ppid_item.key);
-        if (ppid_found && (target_item.key != 0)) {
-          hls_cbf_insert<CBF_SIZE, CBF_NUM_HASHES>(cbf_counters, pid_item.key);
+        uint64_t hits =
+            hls_cbf_query_all<NUM_ROOTS, CBF_SIZE_PER_ROOT, CBF_NUM_HASHES>(
+                cbf_roots, ppid_item.key);
+        if (hits != 0 && target_item.key != 0) {
+          for (uint32_t r = 0; r < NUM_ROOTS; r++) {
+#pragma HLS UNROLL
+            if (hits & (static_cast<uint64_t>(1) << r)) {
+              hls_cbf_insert_at<NUM_ROOTS, CBF_SIZE_PER_ROOT, CBF_NUM_HASHES>(
+                  cbf_roots, r, pid_item.key);
+            }
+          }
           res.result = pid_item.key;
-        } else {
-          res.result = 0;
         }
       }
 
@@ -193,7 +291,9 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
     return;
   }
 
-  // Cuckoo-backed subtree mode: supports exact removal of PIDs.
+  // Per-root cuckoo subtree mode: supports exact removal.
+  // Permissive policy: on >=1 hits, insert pid into every hit root; on remove,
+  // remove from every hit root.
   if (mode == MODE_CF_SUBTREE) {
     while (1) {
       KeyItem pid_item;
@@ -214,21 +314,40 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
 
       ResultItem res;
       res.done = 0;
+      res.result = 0;
 
-      if (target_item.key == TUPLE_REMOVE) {
-        hls_cuckoo_remove<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
-                                                                pid_item.key);
-        res.result = 0;
+      if (ppid_item.key == 0) {
+        uint32_t r = next_root_cf & (NUM_ROOTS - 1);
+        next_root_cf++;
+        hls_cuckoo_insert_at<NUM_ROOTS, CF_NUM_BUCKETS_PER_ROOT,
+                             CF_SLOTS_PER_BUCKET>(cf_roots, r, pid_item.key);
+        res.result = pid_item.key;
+      } else if (target_item.key == TUPLE_REMOVE) {
+        uint64_t hits =
+            hls_cuckoo_query_all<NUM_ROOTS, CF_NUM_BUCKETS_PER_ROOT,
+                                 CF_SLOTS_PER_BUCKET>(cf_roots, pid_item.key);
+        for (uint32_t r = 0; r < NUM_ROOTS; r++) {
+#pragma HLS UNROLL
+          if (hits & (static_cast<uint64_t>(1) << r)) {
+            hls_cuckoo_remove_at<NUM_ROOTS, CF_NUM_BUCKETS_PER_ROOT,
+                                 CF_SLOTS_PER_BUCKET>(cf_roots, r,
+                                                      pid_item.key);
+          }
+        }
       } else {
-        bool ppid_found =
-            hls_cuckoo_query<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(
-                cf_table, ppid_item.key);
-        if (ppid_found && (target_item.key != 0)) {
-          hls_cuckoo_insert<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
-                                                                  pid_item.key);
+        uint64_t hits =
+            hls_cuckoo_query_all<NUM_ROOTS, CF_NUM_BUCKETS_PER_ROOT,
+                                 CF_SLOTS_PER_BUCKET>(cf_roots, ppid_item.key);
+        if (hits != 0 && target_item.key != 0) {
+          for (uint32_t r = 0; r < NUM_ROOTS; r++) {
+#pragma HLS UNROLL
+            if (hits & (static_cast<uint64_t>(1) << r)) {
+              hls_cuckoo_insert_at<NUM_ROOTS, CF_NUM_BUCKETS_PER_ROOT,
+                                   CF_SLOTS_PER_BUCKET>(cf_roots, r,
+                                                        pid_item.key);
+            }
+          }
           res.result = pid_item.key;
-        } else {
-          res.result = 0;
         }
       }
 
@@ -278,25 +397,22 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
                                                                           : 0;
       break;
     case MODE_CF_INSERT:
-      res.result =
-          hls_cuckoo_insert<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
-                                                                  item.key)
-              ? 1
-              : 0;
+      res.result = hls_cuckoo_insert<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(
+                       cf_table, item.key)
+                       ? 1
+                       : 0;
       break;
     case MODE_CF_QUERY:
-      res.result =
-          hls_cuckoo_query<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
-                                                                 item.key)
-              ? 1
-              : 0;
+      res.result = hls_cuckoo_query<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(
+                       cf_table, item.key)
+                       ? 1
+                       : 0;
       break;
     case MODE_CF_REMOVE:
-      res.result =
-          hls_cuckoo_remove<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(cf_table,
-                                                                  item.key)
-              ? 1
-              : 0;
+      res.result = hls_cuckoo_remove<CF_NUM_BUCKETS, CF_SLOTS_PER_BUCKET>(
+                       cf_table, item.key)
+                       ? 1
+                       : 0;
       break;
     default:
       res.result = 0;

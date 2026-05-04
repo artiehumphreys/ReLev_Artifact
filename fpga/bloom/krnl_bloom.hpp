@@ -39,6 +39,17 @@ typedef uint32_t bloom_key_t;
 #define CF_SLOTS_PER_BUCKET 4
 #define CF_TABLE_BYTES (CF_NUM_BUCKETS * CF_SLOTS_PER_BUCKET)
 
+// Per-root subtree parameters. NUM_ROOTS must be power of 2 (mask wrap on
+// seed allocation).
+#ifndef NUM_ROOTS
+#define NUM_ROOTS 16
+#endif
+#define BF_SIZE_PER_ROOT (BF_SIZE / NUM_ROOTS)
+#define BF_NUM_BYTES_PER_ROOT (BF_SIZE_PER_ROOT / 8)
+#define CBF_SIZE_PER_ROOT (CBF_SIZE / NUM_ROOTS)
+#define CF_NUM_BUCKETS_PER_ROOT (CF_NUM_BUCKETS / NUM_ROOTS)
+#define CF_TABLE_BYTES_PER_ROOT (CF_NUM_BUCKETS_PER_ROOT * CF_SLOTS_PER_BUCKET)
+
 // Edge tuple: pid, ppid, is_target
 #define TUPLE_FIELDS 3
 // is_target sentinel for removal: "-pid 0 0" in log → (pid, 0, TUPLE_REMOVE)
