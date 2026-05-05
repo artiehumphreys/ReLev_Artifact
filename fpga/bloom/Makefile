@@ -27,7 +27,7 @@ VPP_LINK_OPTS += --config HBM_connectivity.cfg
 CFLAGS := -g -std=c++1y -DKEY_BITS=$(KEY_BITS) -I$(XILINX_XRT)/include -I$(XILINX_HLS)/include
 LFLAGS := -L$(XILINX_XRT)/lib -lOpenCL -lxrt_coreutil -lrt -luuid
 
-# Input: single log file — one "pid ppid is_shell" per line
+# Input: single log file -- one "pid ppid is_shell" per line
 # ppid=0 marks seed PIDs (roots of suspicious subtrees)
 CMD_ARGS := bloom.$(TARGET).xclbin log.txt
 

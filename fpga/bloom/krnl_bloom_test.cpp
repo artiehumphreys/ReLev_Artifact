@@ -134,14 +134,14 @@ int main(int argc, char **argv) {
     delete[] clear_in;
     delete[] clear_out;
 
-    // All tuples — including seed (100, 0, 1) — flow through one subtree pass.
+    // All tuples -- including seed (100, 0, 1) -- flow through one subtree pass.
     // Seeds emit 0 (no alert); edges emit pid on hit, 0 otherwise.
     std::vector<bloom_key_t> tuples = {
-        100, 0,   1, // seed: alloc root, insert 100  → 0
-        200, 100, 1, // child of 100, target → alert  → 200
-        300, 200, 1, // child of 200, target → alert  → 300
-        400, 200, 0, // child of 200, not target      → 0
-        500, 999, 1, // 999 not tracked               → 0
+        100, 0,   1, // seed: alloc root, insert 100  -> 0
+        200, 100, 1, // child of 100, target -> alert -> 200
+        300, 200, 1, // child of 200, target -> alert -> 300
+        400, 200, 0, // child of 200, not target      -> 0
+        500, 999, 1, // 999 not tracked               -> 0
     };
 
     int num_values = tuples.size();

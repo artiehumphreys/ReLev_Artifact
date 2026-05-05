@@ -9,7 +9,7 @@ static constexpr uint8_t CUCKOO_EMPTY = 0;
 template <HashType HT> inline uint8_t cuckoo_fingerprint(uint32_t key) {
 #pragma HLS INLINE
   uint8_t fp = static_cast<uint8_t>(hls_hash_dispatch<HT>(key, 0x9E3779B9));
-  return fp + (fp == 0); // map 0 → 1
+  return fp + (fp == 0); // map 0 -> 1
 }
 
 template <uint32_t NUM_BUCKETS, HashType HT>
@@ -30,9 +30,9 @@ inline uint32_t cuckoo_alt_index(uint32_t i, uint8_t fp) {
 }
 
 template <uint32_t NUM_BUCKETS, int SLOTS, HashType HT = HASH_XOR_SHIFT,
-          int MAX_KICKS = 500>
+          int MAX_KICKS = 100>
 bool hls_cuckoo_insert(uint8_t table[NUM_BUCKETS * SLOTS], uint32_t key) {
-#pragma HLS INLINE
+#pragma HLS INLINE off
   static_assert((NUM_BUCKETS & (NUM_BUCKETS - 1)) == 0,
                 "NUM_BUCKETS must be power of 2");
 
@@ -147,7 +147,7 @@ uint64_t hls_cuckoo_query_all(const uint8_t tables[NR][NUM_BUCKETS * SLOTS],
 }
 
 template <uint32_t NR, uint32_t NUM_BUCKETS, int SLOTS,
-          HashType HT = HASH_XOR_SHIFT, int MAX_KICKS = 500>
+          HashType HT = HASH_XOR_SHIFT, int MAX_KICKS = 100>
 bool hls_cuckoo_insert_at(uint8_t tables[NR][NUM_BUCKETS * SLOTS],
                           uint32_t root, uint32_t key) {
 #pragma HLS INLINE

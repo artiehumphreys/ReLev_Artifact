@@ -57,7 +57,7 @@ static_assert(NUM_ROOTS <= 64,
 
 // Edge tuple: pid, ppid, is_target
 #define TUPLE_FIELDS 3
-// is_target sentinel for removal: "-pid 0 0" in log → (pid, 0, TUPLE_REMOVE)
+// is_target sentinel for removal: "-pid 0 0" in log -> (pid, 0, TUPLE_REMOVE)
 #define TUPLE_REMOVE 0xFFFFFFFF
 
 // Operation modes

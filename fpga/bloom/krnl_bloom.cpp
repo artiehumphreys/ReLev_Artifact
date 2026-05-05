@@ -32,7 +32,7 @@ static void read_input(KeyPack *in, hls::stream<KeyItem> &keyStream,
   keyStream << sentinel;
 }
 
-// Per-root state for *_SUBTREE modes — dim 1 partitioned so all NUM_ROOTS
+// Per-root state for *_SUBTREE modes -- dim 1 partitioned so all NUM_ROOTS
 // banks read in parallel for query_all.
 static inline int popcount64(uint64_t v) {
 #pragma HLS INLINE
@@ -173,9 +173,9 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
   }
 
   // Per-root subtree mode: stream (pid, ppid, is_target) tuples.
-  //   ppid == 0          → seed: allocate next root, insert pid there.
-  //   target == REMOVE   → BF cannot delete; skip.
-  //   else               → parallel query_all on ppid across all NUM_ROOTS BFs.
+  //   ppid == 0          -> seed: allocate next root, insert pid there.
+  //   target == REMOVE   -> BF cannot delete; skip.
+  //   else               -> parallel query_all on ppid across all NUM_ROOTS BFs.
   //                        Permissive policy: on any hit AND target != 0,
   //                        insert pid into every hit root and emit alert.
   if (mode == MODE_BF_SUBTREE) {
@@ -207,7 +207,7 @@ static void bloom_process(hls::stream<KeyItem> &keyStream,
             bf_roots, r, pid_item.key);
         // seed: no alert
       } else if (target_item.key == TUPLE_REMOVE) {
-        // BF cannot delete — drop
+        // BF cannot delete -- drop
       } else {
         uint64_t hits =
             hls_bloom_query_all<NUM_ROOTS, BF_SIZE_PER_ROOT, BF_NUM_HASHES>(

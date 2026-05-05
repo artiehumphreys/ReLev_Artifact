@@ -173,7 +173,7 @@ static bool check_cf_no_fn(uint32_t n) {
 int main() {
   constexpr uint32_t NQ = 100000;
 
-  std::cout << " BF — Bloom Filter (m=8192, k=3)\n";
+  std::cout << " BF -- Bloom Filter (m=8192, k=3)\n";
 
   std::cout << "\nFPR:\n";
 
@@ -203,7 +203,7 @@ int main() {
             << (check_no_fn<16384, 3, HASH_PIM>(1000) ? "PASS" : "FAIL")
             << '\n';
 
-  std::cout << " CBF — Counting Bloom Filter (m=8192, k=3)\n";
+  std::cout << " CBF -- Counting Bloom Filter (m=8192, k=3)\n";
 
   std::cout << "\nInsert/remove FPR:\n";
 
@@ -222,7 +222,7 @@ int main() {
   run_cbf<8192, 3, HASH_MURMUR3>("murmur3", 6000, 5000, NQ);
   run_cbf<8192, 3, HASH_PIM>("pim (no mul)", 6000, 5000, NQ);
 
-  std::cout << " CF — Cuckoo Filter (buckets=2048, slots=4)\n";
+  std::cout << " CF -- Cuckoo Filter (buckets=2048, slots=4)\n";
 
   std::cout << "\nFPR:\n";
 
