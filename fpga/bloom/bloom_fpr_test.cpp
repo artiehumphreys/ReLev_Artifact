@@ -111,7 +111,16 @@ static void cbf_sawtooth(const char *label) {
 
   print_row("del to 50%", n_target, static_cast<double>(fp) / NQ,
             theoretical_fpr(SIZE, NUM_HASHES, n_target));
-  std::cout << '\n';
+
+  gen.reset(SEED);
+  for (uint32_t i = 0; i < to_remove; i++)
+    gen.next();
+  uint32_t fn = 0;
+  for (uint32_t i = 0; i < n_target; i++)
+    if (!hls_cbf_query<SIZE, NUM_HASHES, HT>(counters, gen.next()))
+      fn++;
+  std::cout << "    false negatives after del: " << fn << "/" << n_target
+            << '\n' << '\n';
 }
 
 template <uint32_t NUM_BUCKETS, int SLOTS, HashType HT>
@@ -157,7 +166,16 @@ static void cuckoo_sawtooth(const char *label) {
       fp++;
 
   print_row("del to 50%", n_target, static_cast<double>(fp) / NQ);
-  std::cout << '\n';
+
+  gen.reset(SEED);
+  for (uint32_t i = 0; i < to_remove; i++)
+    gen.next();
+  uint32_t fn = 0;
+  for (uint32_t i = 0; i < n_target; i++)
+    if (!hls_cuckoo_query<NUM_BUCKETS, SLOTS, HT>(table, gen.next()))
+      fn++;
+  std::cout << "    false negatives after del: " << fn << "/" << n_target
+            << '\n' << '\n';
 }
 
 int main() {
