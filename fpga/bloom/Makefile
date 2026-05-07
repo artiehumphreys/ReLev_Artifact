@@ -8,6 +8,16 @@ DEVICE := /opt/xilinx/platforms/xilinx_u280_gen3x16_xdma_1_202211_1/xilinx_u280_
 #   make all KEY_BITS=32   (default)
 KEY_BITS ?= 32
 
+FILTER_TYPE ?= FULL
+
+ifeq ($(FILTER_TYPE), BF_ONLY)
+    CONFIG_FLAGS := -DBUILD_BF_ONLY
+else ifeq ($(FILTER_TYPE), CBF_ONLY)
+    CONFIG_FLAGS := -DBUILD_CBF_ONLY
+else ifeq ($(FILTER_TYPE), CF_ONLY)
+    CONFIG_FLAGS := -DBUILD_CF_ONLY
+endif
+
 # kernel targets
 BLOOM_XO := bloom.$(TARGET).xo
 XCLBIN := bloom.$(TARGET).xclbin
@@ -49,14 +59,14 @@ cleanall: clean
 # kernel rules
 $(BLOOM_XO): krnl_bloom.cpp
 	$(RM) $@
-	$(VPP) $(VPP_OPTS) -c --hls.clock 500000000:krnl_bloom -k krnl_bloom -DKEY_BITS=$(KEY_BITS) -I'$(<D)' -o $@ $+
+	$(VPP) $(VPP_OPTS) -c --hls.clock 500000000:krnl_bloom -k krnl_bloom $(CONFIG_FLAGS) -DKEY_BITS=$(KEY_BITS) -I'$(<D)' -o $@ $+
 
 $(XCLBIN): $(BLOOM_XO)
 	$(VPP) $(VPP_OPTS) $(VPP_LINK_OPTS) -l -o $@ $(BLOOM_XO)
 
 # host rules
 $(HOST_EXE): ./host/host.cpp
-	g++ $(CFLAGS) -o $@ $+ $(LFLAGS)
+	g++ $(CFLAGS) -std=c++17 $(CONFIG_FLAGS) -o $@ $+ $(LFLAGS)
 	@echo 'Compiled Host Executable: $(HOST_EXE) (KEY_BITS=$(KEY_BITS))'
 
 $(EMCONFIG_FILE):

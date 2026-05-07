@@ -33,4 +33,6 @@ xsim.dir/
 .run/
 
 fpga/bloom/big_log.txt
+fpga/bloom/medium_log.txt
 fpga/bloom/bloom_fpr_test
+results/

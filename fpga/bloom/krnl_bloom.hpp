@@ -42,7 +42,7 @@ typedef uint32_t bloom_key_t;
 // Per-root subtree parameters. NUM_ROOTS must be power of 2 (mask wrap on
 // seed allocation).
 #ifndef NUM_ROOTS
-#define NUM_ROOTS 16
+#define NUM_ROOTS 4
 #endif
 #define BF_SIZE_PER_ROOT (BF_SIZE / NUM_ROOTS)
 #define BF_NUM_BYTES_PER_ROOT (BF_SIZE_PER_ROOT / 8)
